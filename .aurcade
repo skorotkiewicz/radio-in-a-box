@@ -1,0 +1,1 @@
+Self-hosted internet radio with Icecast, Liquidsoap, and a small Rust CLI. Docker Compose runs the services, while the CLI imports audio folders recursively and controls live playback. Includes a lightweight, responsive listener page built with plain HTML, CSS, and JavaScript, with no frameworks or frontend build step.
