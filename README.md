@@ -12,7 +12,7 @@ this directory:
 ```sh
 cargo install --path . --locked
 radio init
-radio add /path/to/music/*.mp3
+radio add /path/to/music/
 radio start
 ```
 
@@ -44,9 +44,19 @@ Liquidsoap's command socket via `docker compose exec`, without a public
 management port. Track changes do not restart the stream.
 
 Imports support MP3, Ogg, FLAC, WAV, M4A, and AAC. Actual decoding depends on
-the file's codec. Files are copied, not moved; duplicate names are rejected.
-Use one CLI importer at a time. If disk or playlist writing fails, the copied
-file is retained for manual recovery rather than deleted. To edit the rotation,
+the file's codec. Pass files, directories, or shell-expanded wildcards:
+
+```sh
+radio add /path/to/music/           # Includes all nested directories
+radio add /path/to/*                # Your shell expands the wildcard
+```
+
+Unsupported files and symlink directories are skipped. Imports are flattened
+into `music/`: files are copied, not moved, and duplicate names are rejected
+without overwriting anything. A duplicate or I/O error stops the import;
+already imported tracks are kept. Use one CLI importer at a time.
+If disk or playlist writing fails, the copied file is retained for manual
+recovery rather than deleted. To edit the rotation,
 edit `music/playlist.m3u` and run `radio reload`; it contains `/music/filename`
 paths, one per line. You can also edit `docker/radio.liq` for advanced audio
 behavior, then run `radio restart`.

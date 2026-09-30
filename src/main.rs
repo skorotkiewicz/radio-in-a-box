@@ -14,7 +14,7 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 const HELP: &str = "radio: run from the directory containing compose.yaml
 
   init              Create private passwords and an empty library (no overwrites)
-  add FILE...       Copy audio into the library and update the live playlist
+  add PATH...       Import audio files or directories recursively
   list              List library tracks
   start             Build and start the station
   stop              Stop the station, keeping all music and settings
@@ -58,10 +58,9 @@ fn run(args: &[String]) -> Result<()> {
         return Err("station is not initialized; run radio init".into());
     }
     match (command, &args[1..]) {
-        ("add", files) if !files.is_empty() => {
-            for file in files {
-                let name = add(&root, Path::new(file))?;
-                println!("Added {name}");
+        ("add", paths) if !paths.is_empty() => {
+            for path in paths {
+                add_path(&root, Path::new(path))?;
             }
             Ok(())
         }
@@ -141,20 +140,37 @@ fn init(root: &Path) -> Result<()> {
     create_if_missing(&music.join("playlist.m3u"), "#EXTM3U\n", 0o644)
 }
 
-fn validate_name(name: &str) -> Result<()> {
-    if name.is_empty() || name.chars().any(char::is_control) {
-        return Err("audio filenames must be nonempty and contain no control characters".into());
-    }
-    let extension = Path::new(name)
+fn supported_audio(path: &Path) -> bool {
+    let extension = path
         .extension()
         .and_then(|extension| extension.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    if !matches!(
+    matches!(
         extension.as_str(),
         "mp3" | "ogg" | "flac" | "wav" | "m4a" | "aac"
-    ) {
+    )
+}
+
+fn validate_name(name: &str) -> Result<()> {
+    if name.is_empty() || name.chars().any(char::is_control) {
+        return Err("audio filenames must be nonempty and contain no control characters".into());
+    }
+    if !supported_audio(Path::new(name)) {
         return Err("supported audio extensions: mp3, ogg, flac, wav, m4a, aac".into());
+    }
+    Ok(())
+}
+
+fn add_path(root: &Path, source: &Path) -> Result<()> {
+    let source = source.components().as_path();
+    // Inspect the link itself so directory symlinks cannot introduce recursion loops.
+    if fs::symlink_metadata(source)?.is_dir() {
+        for entry in fs::read_dir(source)? {
+            add_path(root, &entry?.path())?;
+        }
+    } else if source.is_file() && supported_audio(source) {
+        println!("Added {}", add(root, source)?);
     }
     Ok(())
 }
@@ -281,6 +297,50 @@ mod tests {
         assert!(validate_name("track\nradio.skip.mp3").is_err());
         assert!(validate_name("track.txt").is_err());
         assert_eq!(fs::read(&track)?, b"test audio");
+
+        let collection = root.join("collection");
+        fs::create_dir_all(collection.join("album/disc"))?;
+        fs::create_dir(collection.join("empty"))?;
+        fs::write(collection.join("two.FLAC"), b"second track")?;
+        fs::write(collection.join("album/three.wav"), b"third track")?;
+        fs::write(collection.join("album/disc/four.ogg"), b"fourth track")?;
+        fs::write(collection.join("notes.txt"), b"not audio")?;
+        fs::write(collection.join("album/cover.jpg"), b"not audio")?;
+        #[cfg(unix)]
+        {
+            let outside = root.join("outside");
+            fs::create_dir(&outside)?;
+            fs::write(outside.join("ignored.mp3"), b"outside track")?;
+            std::os::unix::fs::symlink(&collection, collection.join("loop"))?;
+            std::os::unix::fs::symlink(&outside, collection.join("linked-directory"))?;
+        }
+        add_path(&root, &collection)?;
+        #[cfg(unix)]
+        add_path(&root, &collection.join("linked-directory/"))?;
+        let playlist = fs::read_to_string(root.join("music/playlist.m3u"))?;
+        let mut tracks: Vec<_> = playlist.lines().skip(1).collect();
+        tracks.sort_unstable();
+        assert_eq!(
+            tracks,
+            [
+                "/music/a song.MP3",
+                "/music/four.ogg",
+                "/music/three.wav",
+                "/music/two.FLAC"
+            ]
+        );
+        assert_eq!(fs::read(root.join("music/four.ogg"))?, b"fourth track");
+        assert!(!root.join("music/notes.txt").exists());
+        assert!(!root.join("music/ignored.mp3").exists());
+        add_path(&root, &collection.join("empty"))?;
+        add_path(&root, &collection.join("notes.txt"))?;
+        assert!(add_path(&root, &track).is_err());
+        assert!(add_path(&root, &root.join("missing")).is_err());
+        assert_eq!(
+            fs::read_to_string(root.join("music/playlist.m3u"))?,
+            playlist
+        );
+        assert_eq!(fs::read(root.join("music/a song.MP3"))?, b"test audio");
         Ok(())
     }
 }
