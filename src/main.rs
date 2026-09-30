@@ -96,7 +96,8 @@ fn run(args: &[String]) -> Result<()> {
 
 fn secret() -> Result<String> {
     let mut bytes = [0_u8; 24];
-    getrandom::fill(&mut bytes).map_err(|error| format!("secure randomness unavailable: {error}"))?;
+    getrandom::fill(&mut bytes)
+        .map_err(|error| format!("secure randomness unavailable: {error}"))?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
@@ -131,7 +132,9 @@ fn init(root: &Path) -> Result<()> {
         &root.join(".env"),
         &format!(
             "STATION_NAME=My Radio\nRADIO_BIND=127.0.0.1\nRADIO_PORT=8080\nICECAST_PORT=8000\nICECAST_SOURCE_PASSWORD={}\nICECAST_ADMIN_PASSWORD={}\nICECAST_RELAY_PASSWORD={}\n",
-            secret()?, secret()?, secret()?
+            secret()?,
+            secret()?,
+            secret()?
         ),
         0o600,
     )?;
@@ -147,7 +150,10 @@ fn validate_name(name: &str) -> Result<()> {
         .and_then(|extension| extension.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    if !matches!(extension.as_str(), "mp3" | "ogg" | "flac" | "wav" | "m4a" | "aac") {
+    if !matches!(
+        extension.as_str(),
+        "mp3" | "ogg" | "flac" | "wav" | "m4a" | "aac"
+    ) {
         return Err("supported audio extensions: mp3, ogg, flac, wav, m4a, aac".into());
     }
     Ok(())
@@ -168,7 +174,9 @@ fn add(root: &Path, source: &Path) -> Result<String> {
         .write(true)
         .create_new(true)
         .open(&destination)
-        .map_err(|error| format!("cannot import {name} (existing files are never overwritten): {error}"))?;
+        .map_err(|error| {
+            format!("cannot import {name} (existing files are never overwritten): {error}")
+        })?;
     io::copy(&mut input, &mut output)?;
     output.sync_all()?;
     #[cfg(unix)]
@@ -202,7 +210,16 @@ fn compose(args: &[&str]) -> Result<()> {
 
 fn control(command: &str) -> Result<()> {
     let mut child = docker()
-        .args(["exec", "-T", "liquidsoap", "nc", "-w", "2", "127.0.0.1", "1234"])
+        .args([
+            "exec",
+            "-T",
+            "liquidsoap",
+            "nc",
+            "-w",
+            "2",
+            "127.0.0.1",
+            "1234",
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -217,7 +234,9 @@ fn control(command: &str) -> Result<()> {
         || response.to_ascii_lowercase().contains("error")
         || response.to_ascii_lowercase().contains("unknown command")
     {
-        return Err(format!("Liquidsoap command failed: {response}; is the station running?").into());
+        return Err(
+            format!("Liquidsoap command failed: {response}; is the station running?").into(),
+        );
     }
     print!("{response}");
     Ok(())
@@ -235,7 +254,10 @@ mod tests {
         let env = fs::read_to_string(root.join(".env"))?;
         init(&root)?;
         assert_eq!(fs::read_to_string(root.join(".env"))?, env);
-        let passwords: Vec<_> = env.lines().filter(|line| line.contains("PASSWORD=")).collect();
+        let passwords: Vec<_> = env
+            .lines()
+            .filter(|line| line.contains("PASSWORD="))
+            .collect();
         assert_eq!(passwords.len(), 3);
         for password in passwords {
             let value = password.split_once('=').unwrap().1;
@@ -243,12 +265,18 @@ mod tests {
             assert!(value.bytes().all(|byte| byte.is_ascii_hexdigit()));
         }
         #[cfg(unix)]
-        assert_eq!(fs::metadata(root.join(".env"))?.permissions().mode() & 0o777, 0o600);
+        assert_eq!(
+            fs::metadata(root.join(".env"))?.permissions().mode() & 0o777,
+            0o600
+        );
         let track = root.join("a song.MP3");
         fs::write(&track, b"test audio")?;
         assert_eq!(add(&root, &track)?, "a song.MP3");
         assert_eq!(fs::read(root.join("music/a song.MP3"))?, b"test audio");
-        assert_eq!(fs::read_to_string(root.join("music/playlist.m3u"))?, "#EXTM3U\n/music/a song.MP3\n");
+        assert_eq!(
+            fs::read_to_string(root.join("music/playlist.m3u"))?,
+            "#EXTM3U\n/music/a song.MP3\n"
+        );
         assert!(add(&root, &track).is_err());
         assert!(validate_name("track\nradio.skip.mp3").is_err());
         assert!(validate_name("track.txt").is_err());
