@@ -96,6 +96,7 @@ cargo test
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 node --check web/app.js
+node --test tests/web.test.cjs
 # After radio init:
 docker compose config --quiet
 # With a running Docker daemon:

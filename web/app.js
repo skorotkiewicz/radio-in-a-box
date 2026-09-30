@@ -6,16 +6,15 @@ const button = document.querySelector("#play-button");
 const message = document.querySelector("#player-message");
 
 function syncPlayback() {
-  const playing = !audio.paused;
+  const playing = !audio.paused && !audio.error;
   player.classList.toggle("playing", playing);
   document.querySelector("#play-icon").textContent = playing ? "Ⅱ" : "▶";
   document.querySelector("#play-label").textContent = playing ? "Pause radio" : "Listen live";
 }
 
 button.addEventListener("click", async () => {
-  if (!audio.paused) {
+  if (!audio.paused && !audio.error) {
     audio.pause();
-    audio.removeAttribute("src");
     audio.load();
     return;
   }
@@ -36,9 +35,7 @@ audio.addEventListener("playing", () => { message.textContent = "You're tuned in
 audio.addEventListener("waiting", () => { message.textContent = "Buffering the live stream…"; });
 audio.addEventListener("error", () => {
   message.textContent = "The signal is unavailable. Press Listen live to reconnect.";
-  player.classList.remove("playing");
-  document.querySelector("#play-icon").textContent = "▶";
-  document.querySelector("#play-label").textContent = "Listen live";
+  syncPlayback();
 });
 
 async function refreshStation() {
