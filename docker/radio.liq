@@ -15,9 +15,9 @@ server.register(namespace="radio", description="Skip the current track.", "skip"
 output.icecast(
   %mp3(bitrate=128),
   host="icecast", port=8000,
-  password=environment.get("ICECAST_SOURCE_PASSWORD"),
+  password=getenv("ICECAST_SOURCE_PASSWORD"),
   mount="/radio.mp3",
-  name=environment.get("STATION_NAME"),
+  name=getenv("STATION_NAME"),
   description="Independent radio, broadcasting around the clock.",
   public=false,
   radio
