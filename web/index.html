@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f3efe6">
+  <meta name="description" content="Independent radio. Good music, no algorithm. Tune in to our live stream.">
+  <title>My Radio · Independent radio</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#player">Skip to player</a>
+  <div class="page">
+    <header class="masthead">
+      <a class="brand" href="/" aria-label="Station homepage"><span class="brand-mark" aria-hidden="true">s.</span><span id="station-name">My Radio</span></a>
+      <span class="masthead-note">Independent by nature.</span>
+      <a class="tune-link" href="#player">Tune in <span aria-hidden="true">↗</span></a>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="headline">
+        <div class="intro">
+          <p class="eyebrow"><span class="tiny-line" aria-hidden="true"></span> Your corner of the airwaves</p>
+          <h1 id="headline">Good music.<br>No <em>algorithm.</em></h1>
+          <p class="lead">A little signal. A lot of soul. Press play, settle in, and let the next record find you.</p>
+          <a class="hero-link" href="#player">Find your frequency <span aria-hidden="true">↓</span></a>
+          <div class="intro-bottom"><span>Real tracks. One shared stream.</span><span class="mini-wave" aria-hidden="true">▂▅▃▇▂▆▄</span></div>
+        </div>
+
+        <section class="player" id="player" aria-label="Live radio player">
+          <div class="player-top"><span id="broadcast-status" role="status">Connecting</span><span>STEREO / MP3</span></div>
+          <div class="record-art" aria-hidden="true">
+            <div class="record"><div class="record-label"><span>THE DAILY<br>ROTATION</span><b>s.</b><small>SIDE A · 128 KBPS</small><i></i></div></div>
+            <div class="tonearm"></div>
+            <span class="art-caption">A soundtrack for being here.</span>
+          </div>
+          <div class="now-playing">
+            <span class="eyebrow">On the turntable</span>
+            <h2 id="track-title" aria-live="polite">Waiting for the signal</h2>
+            <p id="track-detail">Your next favorite could be next.</p>
+          </div>
+          <div class="player-actions">
+            <button id="play-button" type="button"><span id="play-icon" aria-hidden="true">▶</span><span id="play-label">Listen live</span></button>
+            <span id="listeners">Live listeners: —</span>
+          </div>
+          <audio id="audio" controls preload="none" src="/radio.mp3" aria-label="Live radio stream">Your browser does not support audio. <a href="/radio.mp3">Open the stream.</a></audio>
+          <p class="player-message" id="player-message" role="status">Hit play. We'll take it from here.</p>
+        </section>
+      </section>
+
+      <section class="listening-notes" aria-label="Ways to listen">
+        <div class="notes-heading"><span class="eyebrow">Stay a while</span><h2>Less scrolling.<br>More listening.</h2></div>
+        <article><span class="note-number">01 / IN YOUR BROWSER</span><h3>One button. You're in.</h3><p>No sign-ups, no downloads. Use the player above and leave this tab open while life happens.</p></article>
+        <article><span class="note-number">02 / ON YOUR OWN TERMS</span><h3>Bring your own player.</h3><p>Prefer VLC or another audio player? Open our MP3 stream and take the station with you.</p><a href="/radio.mp3">Open direct stream <span aria-hidden="true">↗</span></a></article>
+      </section>
+    </main>
+
+    <footer><span>Small station. Wide open ears.</span><span>Icecast + Liquidsoap <span class="footer-dot" aria-hidden="true">·</span> Independent radio</span></footer>
+  </div>
+</body>
+</html>
