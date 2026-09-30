@@ -1,0 +1,9 @@
+[package]
+name = "radio"
+version = "0.1.0"
+edition = "2024"
+description = "A small CLI for a Docker-powered radio station"
+license = "MIT"
+
+[dependencies]
+getrandom = "0.3"

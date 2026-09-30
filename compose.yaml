@@ -1,0 +1,73 @@
+services:
+  icecast:
+    build:
+      context: .
+      target: icecast
+    environment:
+      ICECAST_SOURCE_PASSWORD: ${ICECAST_SOURCE_PASSWORD:?Run radio init first}
+      ICECAST_ADMIN_PASSWORD: ${ICECAST_ADMIN_PASSWORD:?Run radio init first}
+      ICECAST_RELAY_PASSWORD: ${ICECAST_RELAY_PASSWORD:?Run radio init first}
+    ports:
+      - "127.0.0.1:${ICECAST_PORT:-8000}:8000"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, http://127.0.0.1:8000/status-json.xsl]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  liquidsoap:
+    build:
+      context: .
+      target: liquidsoap
+    environment:
+      ICECAST_SOURCE_PASSWORD: ${ICECAST_SOURCE_PASSWORD:?Run radio init first}
+      STATION_NAME: ${STATION_NAME:-My Radio}
+    volumes:
+      - ./music:/music:ro
+      - ./docker/radio.liq:/etc/radio.liq:ro
+    depends_on:
+      icecast:
+        condition: service_healthy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD-SHELL, "printf 'help\\nexit\\n' | nc -w 2 127.0.0.1 1234 | grep -q END"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  web:
+    image: nginx:1.28-alpine
+    user: nginx
+    entrypoint: [nginx]
+    command: [-g, "daemon off;"]
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "${RADIO_BIND:-127.0.0.1}:${RADIO_PORT:-8080}:8080"
+    depends_on:
+      icecast:
+        condition: service_healthy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/]
+      interval: 10s
+      timeout: 3s
+      retries: 5
