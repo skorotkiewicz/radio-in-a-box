@@ -5,9 +5,11 @@ settings.server.telnet.set(true)
 settings.server.telnet.bind_addr.set("127.0.0.1")
 settings.server.telnet.port.set(1234)
 
+station_name = getenv("STATION_NAME")
 library = playlist(id="library", mode="randomize", reload_mode="watch", "/music/playlist.m3u")
 requests = request.queue(id="requests")
 jingles = playlist(id="jingles", mode="random", reload_mode="watch", "/music/jingles/playlist.m3u")
+jingles = metadata.map(update=false, fun (_) -> [("title", station_name)], jingles)
 
 # Read the atomic setting at track boundaries; zero disables jingles.
 def jingle_every() =
@@ -34,7 +36,7 @@ output.icecast(
   host="icecast", port=8000,
   password=getenv("ICECAST_SOURCE_PASSWORD"),
   mount="/radio.mp3",
-  name=getenv("STATION_NAME"),
+  name=station_name,
   description="Independent radio, broadcasting around the clock.",
   public=false,
   radio

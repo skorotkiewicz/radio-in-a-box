@@ -37,10 +37,11 @@ test("listener page handles live metadata and playback failures", async () => {
   audio.load = () => {};
   let source = { listenurl: "http://icecast:8000/radio.mp3", server_name: "Test Station", title: "<b>Song</b>", artist: "Artist", listeners: 3 };
   let poll;
+  let pollDelay;
   const context = vm.createContext({
     document, URL, AbortSignal,
     fetch: async () => ({ ok: true, json: async () => ({ icestats: { source } }) }),
-    setTimeout: (handler) => { poll = handler; },
+    setTimeout: (handler, delay) => { poll = handler; pollDelay = delay; },
   });
   vm.runInContext(fs.readFileSync(`${__dirname}/../web/app.js`, "utf8"), context);
   await new Promise(setImmediate);
@@ -49,6 +50,16 @@ test("listener page handles live metadata and playback failures", async () => {
   assert.equal(text("#track-title"), "<b>Song</b>");
   assert.equal(text("#listeners"), "Live listeners: 3");
   assert.equal(text("#broadcast-status"), "On air");
+  assert.equal(pollDelay, 15000);
+
+  source = { ...source, title: "Test Station", artist: "" };
+  await poll();
+  assert.equal(text("#track-title"), "Test Station");
+  assert.equal(text("#track-detail"), "Live from our independent station.");
+  source = { ...source, title: "Back to music", artist: "Artist" };
+  await poll();
+  assert.equal(text("#track-title"), "Back to music");
+  assert.equal(text("#track-detail"), "Artist");
 
   const click = document.querySelector("#play-button").handlers.click;
   await click();

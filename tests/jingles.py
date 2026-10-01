@@ -7,6 +7,7 @@ import tempfile
 import wave
 
 engine, image = sys.argv[1:] or ["docker", "radio-liquidsoap"]
+station_name = "Test Station"
 root = pathlib.Path(tempfile.mkdtemp(prefix="radio-jingles-check-"))
 music = root / "music"
 jingles = music / "jingles"
@@ -25,23 +26,23 @@ for name in ["song1", "song2", "queued", "jingle1", "jingle2"]:
     path.chmod(0o644)
 
 (music / "playlist.m3u").write_text(
-    '#EXTM3U\nannotate:title="Song 1":/music/song1.wav\n'
-    'annotate:title="Song 2":/music/song2.wav\n'
+    '#EXTM3U\nannotate:title="Song 1",artist="Song Artist":/music/song1.wav\n'
+    'annotate:title="Song 2",artist="Song Artist":/music/song2.wav\n'
 )
 jingle_playlist = (
-    '#EXTM3U\nannotate:title="Jingle 1":/music/jingles/jingle1.wav\n'
-    'annotate:title="Jingle 2":/music/jingles/jingle2.wav\n'
+    '#EXTM3U\nannotate:title="Jingle 1",artist="Jingle Artist":/music/jingles/jingle1.wav\n'
+    'annotate:title="Jingle 2",artist="Jingle Artist":/music/jingles/jingle2.wav\n'
 )
 station = pathlib.Path(__file__).resolve().parents[1] / "docker/radio.liq"
 script = root / "check.liq"
 # Exercise the actual station pipeline, replacing only its network output.
 script.write_text(station.read_text().split("output.icecast(", 1)[0] + '''
-ignore(requests.push(request.create("annotate:title=\\"Song queued\\":/music/queued.wav")))
+ignore(requests.push(request.create("annotate:title=\\"Song queued\\",artist=\\"Song Artist\\":/music/queued.wav")))
 played = ref(0)
 def check_track(metadata) =
   title = list.assoc(default="", "title", metadata)
   if title != "" then
-    print("CHECK " ^ title)
+    print("CHECK " ^ title ^ "|" ^ list.assoc(default="ABSENT", "artist", metadata))
     played := !played + 1
     # Test-only exit: do not join the streaming thread from its own callback.
     if !played >= 6 then exit(0) end
@@ -64,14 +65,16 @@ for every, available, expected in [
         path.chmod(0o644)
     result = subprocess.run([
         engine, "run", "--rm", "--network", "none", "--read-only", "--tmpfs", "/tmp",
+        "--env", f"STATION_NAME={station_name}",
         "--volume", f"{music}:/music:ro", "--volume", f"{script}:/etc/check.liq:ro",
         "--entrypoint", "liquidsoap", image, "/etc/check.liq",
     ], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
-    tracks = re.findall(r"^CHECK (.+)$", result.stdout, re.MULTILINE)
+    tracks = re.findall(r"^CHECK (.*?)\|(.*)$", result.stdout, re.MULTILINE)
     assert len(tracks) == 6, result.stdout + result.stderr
-    assert [track.startswith("Jingle") for track in tracks] == expected, tracks
-    assert "Song queued" in tracks, tracks
+    assert [title == station_name for title, artist in tracks] == expected, tracks
+    assert all(artist == ("ABSENT" if title == station_name else "Song Artist") for title, artist in tracks), tracks
+    assert any(title == "Song queued" for title, artist in tracks), tracks
     print(f"PASS: every={every}, jingles available={available}: {tracks}")
 
 print(f"Test audio retained at {root}")
