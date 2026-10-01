@@ -126,6 +126,8 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 node --check web/app.js
 node --test tests/web.test.cjs
+# After building the station images (no live station needed):
+python3 tests/jingles.py
 # After radio init:
 docker compose config --quiet
 # With a running Docker daemon:

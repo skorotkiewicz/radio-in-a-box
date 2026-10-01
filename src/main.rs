@@ -148,6 +148,7 @@ fn set_jingle_every(root: &Path, value: &str) -> Result<()> {
         .map_err(|_| "jingle interval must be a whole number: 0 disables, 1 or more enables")?;
     init_library(&root.join("music/jingles"))?;
     let temporary = root.join("music/jingles/every.tmp");
+    // ponytail: one settings writer; add a file lock for concurrent managers.
     fs::write(&temporary, format!("{every}\n"))?;
     #[cfg(unix)]
     fs::set_permissions(&temporary, fs::Permissions::from_mode(0o644))?;
