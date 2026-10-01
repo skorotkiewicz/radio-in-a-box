@@ -61,6 +61,25 @@ edit `music/playlist.m3u` and run `radio reload`; it contains `/music/filename`
 paths, one per line. You can also edit `docker/radio.liq` for advanced audio
 behavior, then run `radio restart`.
 
+## Jingles
+
+```sh
+radio init                       # Safe upgrade: existing files stay untouched
+radio jingles add /path/to/jingles/
+radio jingles list
+radio jingles every 3            # One random jingle after every 3 songs
+radio restart                    # Once after upgrading to the jingle-aware script
+```
+
+Jingles use their own `music/jingles/playlist.m3u`, with the same recursive
+imports and duplicate protection as songs. `every 0` disables them (the default).
+The interval is saved in `music/jingles/every.txt` and can be changed live with
+`radio jingles every N`, without restarting. Imported jingles are watched live.
+Normal and queued songs both count; skipped/interrupted songs count as a turn.
+A playing jingle finishes before queued songs begin. Missing jingles are skipped;
+without any ready songs the stream stays silent. The rotation counter resets on
+restart; interval changes take effect at subsequent track boundaries.
+
 ## Station settings
 
 `radio init` creates `.env` with three independent random passwords. It never

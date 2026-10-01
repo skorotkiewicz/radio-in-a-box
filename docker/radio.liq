@@ -7,8 +7,25 @@ settings.server.telnet.port.set(1234)
 
 library = playlist(id="library", mode="randomize", reload_mode="watch", "/music/playlist.m3u")
 requests = request.queue(id="requests")
-# Queued tracks interrupt the library; an empty library broadcasts silence.
-radio = fallback(track_sensitive=false, [requests, library, blank()])
+jingles = playlist(id="jingles", mode="random", reload_mode="watch", "/music/jingles/playlist.m3u")
+
+# Read the atomic setting at track boundaries; zero disables jingles.
+def jingle_every() =
+  if file.exists("/music/jingles/every.txt") then
+    max(0, int_of_string(default=0, string.trim(file.contents("/music/jingles/every.txt"))))
+  else
+    0
+  end
+end
+
+# Queued and automatic songs both count. A playing jingle finishes before requests.
+songs = fallback(track_sensitive=false, [requests, library])
+rotation = rotate(weights=[
+  {max(1, jingle_every())},
+  {if jingle_every() > 0 and songs.is_ready() then 1 else 0 end}
+], [songs, jingles])
+# Missing jingles do not block songs; an empty song library broadcasts silence.
+radio = fallback(track_sensitive=false, [rotation, blank()])
 server.register(namespace="radio", description="Skip the current track.", "skip",
   fun (_) -> begin radio.skip(); "OK" end)
 

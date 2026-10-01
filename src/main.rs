@@ -23,7 +23,10 @@ const HELP: &str = "radio: run from the directory containing compose.yaml
   logs              Follow service logs (Ctrl+C to exit)
   queue NAME        Play a library file next, interrupting the automatic playlist
   skip              Skip the current track
-  reload            Reload the playlist without restarting
+  reload            Reload song and jingle playlists without restarting
+  jingles add PATH...  Import jingles recursively, separate from songs
+  jingles list         List jingles
+  jingles every N      Play one random jingle after N songs (0 disables)
 
 Listener page: http://localhost:8080
 Stream:        http://localhost:8080/radio.mp3
@@ -58,27 +61,21 @@ fn run(args: &[String]) -> Result<()> {
         return Err("station is not initialized; run radio init".into());
     }
     match (command, &args[1..]) {
-        ("add", paths) if !paths.is_empty() => {
-            for path in paths {
-                add_path(&root, Path::new(path))?;
-            }
-            Ok(())
+        ("add", paths) if !paths.is_empty() => add_paths(&root, paths, "music"),
+        ("list", []) => list(&root, "music"),
+        ("jingles", [action, paths @ ..]) if action == "add" && !paths.is_empty() => {
+            init_library(&root.join("music/jingles"))?;
+            add_paths(&root, paths, "music/jingles")
         }
-        ("list", []) => {
-            for line in fs::read_to_string(root.join("music/playlist.m3u"))?.lines() {
-                if let Some(name) = line.strip_prefix("/music/") {
-                    println!("{name}");
-                }
-            }
-            Ok(())
-        }
+        ("jingles", [action]) if action == "list" => list(&root, "music/jingles"),
+        ("jingles", [action, every]) if action == "every" => set_jingle_every(&root, every),
         ("start", []) => compose(&["up", "--detach", "--build", "--wait"]),
         ("stop", []) => compose(&["stop"]),
         ("restart", []) => compose(&["up", "--detach", "--build", "--force-recreate", "--wait"]),
         ("status", []) => compose(&["ps"]),
         ("logs", []) => compose(&["logs", "--follow", "--tail", "100"]),
         ("skip", []) => control("radio.skip"),
-        ("reload", []) => control("library.reload"),
+        ("reload", []) => control("library.reload\njingles.reload"),
         ("queue", [name]) => {
             validate_name(name)?;
             if Path::new(name).file_name() != Some(std::ffi::OsStr::new(name)) {
@@ -117,16 +114,22 @@ fn create_if_missing(path: &Path, content: &str, mode: u32) -> Result<()> {
     }
 }
 
-fn init(root: &Path) -> Result<()> {
-    let music = root.join("music");
-    match fs::create_dir(&music) {
+fn init_library(directory: &Path) -> Result<()> {
+    match fs::create_dir(directory) {
         Ok(()) => {
             #[cfg(unix)]
-            fs::set_permissions(&music, fs::Permissions::from_mode(0o755))?;
+            fs::set_permissions(directory, fs::Permissions::from_mode(0o755))?;
         }
-        Err(error) if error.kind() == io::ErrorKind::AlreadyExists && music.is_dir() => {}
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists && directory.is_dir() => {}
         Err(error) => return Err(error.into()),
     }
+    create_if_missing(&directory.join("playlist.m3u"), "#EXTM3U\n", 0o644)
+}
+
+fn init(root: &Path) -> Result<()> {
+    init_library(&root.join("music"))?;
+    init_library(&root.join("music/jingles"))?;
+    create_if_missing(&root.join("music/jingles/every.txt"), "0\n", 0o644)?;
     create_if_missing(
         &root.join(".env"),
         &format!(
@@ -136,8 +139,38 @@ fn init(root: &Path) -> Result<()> {
             secret()?
         ),
         0o600,
-    )?;
-    create_if_missing(&music.join("playlist.m3u"), "#EXTM3U\n", 0o644)
+    )
+}
+
+fn set_jingle_every(root: &Path, value: &str) -> Result<()> {
+    let every: u32 = value
+        .parse()
+        .map_err(|_| "jingle interval must be a whole number: 0 disables, 1 or more enables")?;
+    init_library(&root.join("music/jingles"))?;
+    let temporary = root.join("music/jingles/every.tmp");
+    fs::write(&temporary, format!("{every}\n"))?;
+    #[cfg(unix)]
+    fs::set_permissions(&temporary, fs::Permissions::from_mode(0o644))?;
+    // Publish a complete setting; Liquidsoap reads it at track boundaries.
+    fs::rename(temporary, root.join("music/jingles/every.txt"))?;
+    println!("Jingle interval: {every} songs (0 = disabled)");
+    Ok(())
+}
+
+fn list(root: &Path, library: &str) -> Result<()> {
+    for line in fs::read_to_string(root.join(library).join("playlist.m3u"))?.lines() {
+        if let Some(name) = line.strip_prefix(&format!("/{library}/")) {
+            println!("{name}");
+        }
+    }
+    Ok(())
+}
+
+fn add_paths(root: &Path, paths: &[String], library: &str) -> Result<()> {
+    for path in paths {
+        add_path(root, Path::new(path), library)?;
+    }
+    Ok(())
 }
 
 fn supported_audio(path: &Path) -> bool {
@@ -162,20 +195,20 @@ fn validate_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-fn add_path(root: &Path, source: &Path) -> Result<()> {
+fn add_path(root: &Path, source: &Path, library: &str) -> Result<()> {
     let source = source.components().as_path();
     // Inspect the link itself so directory symlinks cannot introduce recursion loops.
     if fs::symlink_metadata(source)?.is_dir() {
         for entry in fs::read_dir(source)? {
-            add_path(root, &entry?.path())?;
+            add_path(root, &entry?.path(), library)?;
         }
     } else if source.is_file() && supported_audio(source) {
-        println!("Added {}", add(root, source)?);
+        println!("Added {}", add(root, source, library)?);
     }
     Ok(())
 }
 
-fn add(root: &Path, source: &Path) -> Result<String> {
+fn add(root: &Path, source: &Path, library: &str) -> Result<String> {
     let name = source
         .file_name()
         .and_then(|name| name.to_str())
@@ -185,7 +218,7 @@ fn add(root: &Path, source: &Path) -> Result<String> {
     if !input.metadata()?.is_file() {
         return Err("audio source must be a regular file".into());
     }
-    let destination = root.join("music").join(name);
+    let destination = root.join(library).join(name);
     let mut output = OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -201,8 +234,8 @@ fn add(root: &Path, source: &Path) -> Result<String> {
     // ponytail: one playlist writer; add a file lock if concurrent CLI imports are needed.
     let mut playlist = OpenOptions::new()
         .append(true)
-        .open(root.join("music/playlist.m3u"))?;
-    playlist.write_all(format!("/music/{name}\n").as_bytes())?;
+        .open(root.join(library).join("playlist.m3u"))?;
+    playlist.write_all(format!("/{library}/{name}\n").as_bytes())?;
     playlist.sync_all()?;
     Ok(name.to_owned())
 }
@@ -287,13 +320,13 @@ mod tests {
         );
         let track = root.join("a song.MP3");
         fs::write(&track, b"test audio")?;
-        assert_eq!(add(&root, &track)?, "a song.MP3");
+        assert_eq!(add(&root, &track, "music")?, "a song.MP3");
         assert_eq!(fs::read(root.join("music/a song.MP3"))?, b"test audio");
         assert_eq!(
             fs::read_to_string(root.join("music/playlist.m3u"))?,
             "#EXTM3U\n/music/a song.MP3\n"
         );
-        assert!(add(&root, &track).is_err());
+        assert!(add(&root, &track, "music").is_err());
         assert!(validate_name("track\nradio.skip.mp3").is_err());
         assert!(validate_name("track.txt").is_err());
         assert_eq!(fs::read(&track)?, b"test audio");
@@ -314,9 +347,9 @@ mod tests {
             std::os::unix::fs::symlink(&collection, collection.join("loop"))?;
             std::os::unix::fs::symlink(&outside, collection.join("linked-directory"))?;
         }
-        add_path(&root, &collection)?;
+        add_path(&root, &collection, "music")?;
         #[cfg(unix)]
-        add_path(&root, &collection.join("linked-directory/"))?;
+        add_path(&root, &collection.join("linked-directory/"), "music")?;
         let playlist = fs::read_to_string(root.join("music/playlist.m3u"))?;
         let mut tracks: Vec<_> = playlist.lines().skip(1).collect();
         tracks.sort_unstable();
@@ -332,15 +365,48 @@ mod tests {
         assert_eq!(fs::read(root.join("music/four.ogg"))?, b"fourth track");
         assert!(!root.join("music/notes.txt").exists());
         assert!(!root.join("music/ignored.mp3").exists());
-        add_path(&root, &collection.join("empty"))?;
-        add_path(&root, &collection.join("notes.txt"))?;
-        assert!(add_path(&root, &track).is_err());
-        assert!(add_path(&root, &root.join("missing")).is_err());
+        add_path(&root, &collection.join("empty"), "music")?;
+        add_path(&root, &collection.join("notes.txt"), "music")?;
+        assert!(add_path(&root, &track, "music").is_err());
+        assert!(add_path(&root, &root.join("missing"), "music").is_err());
         assert_eq!(
             fs::read_to_string(root.join("music/playlist.m3u"))?,
             playlist
         );
         assert_eq!(fs::read(root.join("music/a song.MP3"))?, b"test audio");
+
+        add_path(&root, &track, "music/jingles")?;
+        assert_eq!(
+            fs::read_to_string(root.join("music/jingles/playlist.m3u"))?,
+            "#EXTM3U\n/music/jingles/a song.MP3\n"
+        );
+        assert!(add(&root, &track, "music/jingles").is_err());
+        assert_eq!(
+            fs::read_to_string(root.join("music/playlist.m3u"))?,
+            playlist
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("music/jingles/every.txt"))?,
+            "0\n"
+        );
+        set_jingle_every(&root, "3")?;
+        init(&root)?;
+        assert_eq!(
+            fs::read_to_string(root.join("music/jingles/every.txt"))?,
+            "3\n"
+        );
+        for invalid in ["-1", "1.5", "abc", "4294967296", ""] {
+            assert!(set_jingle_every(&root, invalid).is_err());
+        }
+        assert_eq!(
+            fs::read_to_string(root.join("music/jingles/every.txt"))?,
+            "3\n"
+        );
+        set_jingle_every(&root, "0")?;
+        assert_eq!(
+            fs::read_to_string(root.join("music/jingles/every.txt"))?,
+            "0\n"
+        );
         Ok(())
     }
 }
